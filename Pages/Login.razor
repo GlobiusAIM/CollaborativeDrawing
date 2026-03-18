@@ -11,7 +11,11 @@
     <div class="login-card">
         <h2>Вход в систему совместного рисования</h2>
         
-        <EditForm Model="@loginModel" OnValidSubmit="@HandleLogin">
+        <div class="alert alert-danger" style="display: @(errorMessage != null ? "block" : "none")">
+            @errorMessage
+        </div>
+
+        <EditForm Model="@loginModel" OnValidSubmit="@HandleLogin" FormName="loginForm">
             <DataAnnotationsValidator />
             <ValidationSummary />
 
@@ -26,30 +30,80 @@
                 <input type="color" id="color" class="form-control" @bind="loginModel.FavoriteColor" />
             </div>
 
-            <button type="submit" class="btn btn-primary">Войти</button>
+            <button type="submit" class="btn btn-primary" @onclick="() => HandleLogin()">Войти</button>
         </EditForm>
     </div>
 </div>
 
 @code {
     private LoginModel loginModel = new();
+    private string? errorMessage;
 
     private async Task HandleLogin()
     {
-        var claims = new List<Claim>
+        try
         {
-            new Claim(ClaimTypes.Name, loginModel.Username),
-            new Claim("FavoriteColor", loginModel.FavoriteColor)
-        };
+            errorMessage = null;
+            Console.WriteLine("=== HANDLE LOGIN STARTED ===");
+            Console.WriteLine($"Username: {loginModel.Username}");
+            Console.WriteLine($"Color: {loginModel.FavoriteColor}");
 
-        var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
-        var principal = new ClaimsPrincipal(identity);
+            if (string.IsNullOrWhiteSpace(loginModel.Username))
+            {
+                errorMessage = "Имя пользователя обязательно";
+                return;
+            }
 
-        await HttpContextAccessor.HttpContext!.SignInAsync(principal);
+            var claims = new List<Claim>
+            {
+                new Claim(ClaimTypes.Name, loginModel.Username),
+                new Claim("FavoriteColor", loginModel.FavoriteColor)
+            };
 
-        await JSRuntime.InvokeVoidAsync("localStorage.setItem", "username", loginModel.Username);
-        await JSRuntime.InvokeVoidAsync("localStorage.setItem", "color", loginModel.FavoriteColor);
+            var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+            var principal = new ClaimsPrincipal(identity);
 
-        Navigation.NavigateTo("/draw");
+            Console.WriteLine("Signing in...");
+            
+            if (HttpContextAccessor.HttpContext == null)
+            {
+                Console.WriteLine("HttpContext is null!");
+                errorMessage = "Ошибка сервера: HttpContext недоступен";
+                return;
+            }
+
+            await HttpContextAccessor.HttpContext.SignInAsync(
+                CookieAuthenticationDefaults.AuthenticationScheme,
+                principal,
+                new AuthenticationProperties
+                {
+                    IsPersistent = true,
+                    ExpiresUtc = DateTime.UtcNow.AddDays(7)
+                });
+
+            Console.WriteLine("Signed in successfully");
+
+            try
+            {
+                Console.WriteLine("Saving to localStorage...");
+                await JSRuntime.InvokeVoidAsync("localStorage.setItem", "username", loginModel.Username);
+                await JSRuntime.InvokeVoidAsync("localStorage.setItem", "color", loginModel.FavoriteColor);
+                Console.WriteLine("localStorage saved");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"localStorage error: {ex.Message}");
+                // Продолжаем даже если localStorage не работает
+            }
+
+            Console.WriteLine("Navigating to /draw...");
+            Navigation.NavigateTo("/draw", true);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"ERROR in HandleLogin: {ex.Message}");
+            Console.WriteLine($"Stack trace: {ex.StackTrace}");
+            errorMessage = $"Ошибка: {ex.Message}";
+        }
     }
 }

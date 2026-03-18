@@ -3,6 +3,7 @@
 @using Microsoft.AspNetCore.SignalR.Client
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
+@inject ILogger<Canvas> Logger
 @implements IAsyncDisposable
 
 <div class="drawing-container">
@@ -30,26 +31,32 @@
                 @ontouchcancel="StopDrawing">
         </canvas>
 
-        @foreach (var cursor in otherCursors)
+        @if (otherCursors != null)
         {
-            <div class="remote-cursor"
-                 style="left: @(cursor.X)px; top: @(cursor.Y)px; background-color: @cursor.Color;">
-                <span class="cursor-label" style="background-color: @cursor.Color;">
-                    @cursor.UserName
-                </span>
-            </div>
+            @foreach (var cursor in otherCursors.Where(c => c != null))
+            {
+                <div class="remote-cursor"
+                     style="left: @(cursor.X)px; top: @(cursor.Y)px; background-color: @cursor.Color;">
+                    <span class="cursor-label" style="background-color: @cursor.Color;">
+                        @cursor.UserName
+                    </span>
+                </div>
+            }
         }
     </div>
 
     <div class="users-list">
-        <h4>Участники (@onlineUsers.Count)</h4>
+        <h4>Участники (@(onlineUsers?.Count ?? 0))</h4>
         <ul>
-            @foreach (var user in onlineUsers)
+            @if (onlineUsers != null)
             {
-                <li>
-                    <span class="user-indicator" style="background-color: @user.Color"></span>
-                    @user.UserName
-                </li>
+                @foreach (var user in onlineUsers)
+                {
+                    <li>
+                        <span class="user-indicator" style="background-color: @user.Color"></span>
+                        @user.UserName
+                    </li>
+                }
             }
         </ul>
     </div>
@@ -61,21 +68,48 @@
     private HubConnection? hubConnection;
     private bool isDrawing = false;
     private bool isConnected = false;
+    private bool isDisposed = false;
+    private bool isInitialized = false;
     private string currentColor = "#000000";
     private int lineWidth = 3;
     private List<DrawingPoint> drawingHistory = new();
     private List<CursorPosition> otherCursors = new();
     private List<dynamic> onlineUsers = new();
     private readonly SemaphoreSlim connectionLock = new SemaphoreSlim(1, 1);
+    private CancellationTokenSource? cts;
 
     [Parameter] public string UserName { get; set; } = "Аноним";
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender)
+        if (firstRender && !isDisposed && !isInitialized)
         {
-            await InitializeCanvas();
-            await InitializeSignalR();
+            try
+            {
+                cts = new CancellationTokenSource();
+                isInitialized = true;
+                
+                // Даем время браузеру загрузить DOM
+                await Task.Delay(100, cts.Token);
+                
+                if (!cts.Token.IsCancellationRequested)
+                {
+                    await InitializeCanvas();
+                }
+                
+                if (!cts.Token.IsCancellationRequested)
+                {
+                    await InitializeSignalR();
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // Компонент был размонтирован, игнорируем
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "Error during initialization");
+            }
         }
     }
 
@@ -83,11 +117,22 @@
     {
         try
         {
+            if (isDisposed) return;
+            
+            // Проверяем, существует ли canvas элемент
+            var exists = await JS.InvokeAsync<bool>("eval", "document.querySelector('canvas') !== null");
+            if (!exists || isDisposed) return;
+            
             await JS.InvokeVoidAsync("initializeCanvas", canvas);
+            Logger.LogInformation("Canvas initialized");
+        }
+        catch (JSException ex)
+        {
+            Logger.LogWarning(ex, "Canvas initialization JS error (normal during disconnect)");
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Canvas initialization error: {ex.Message}");
+            Logger.LogError(ex, "Canvas initialization error");
         }
     }
 
@@ -95,13 +140,21 @@
     {
         try
         {
+            if (isDisposed) return;
+
             hubConnection = new HubConnectionBuilder()
                 .WithUrl(Navigation.ToAbsoluteUri("/drawinghub"))
-                .WithAutomaticReconnect(new[] { TimeSpan.Zero, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10) })
+                .WithAutomaticReconnect(new[] { 
+                    TimeSpan.FromSeconds(0),
+                    TimeSpan.FromSeconds(2),
+                    TimeSpan.FromSeconds(5),
+                    TimeSpan.FromSeconds(10)
+                })
                 .Build();
 
             hubConnection.On<DrawingPoint>("ReceiveDraw", async (point) =>
             {
+                if (isDisposed) return;
                 try
                 {
                     if (!point.UserId.Equals(UserName, StringComparison.OrdinalIgnoreCase))
@@ -113,15 +166,16 @@
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"ReceiveDraw error: {ex.Message}");
+                    Logger.LogDebug(ex, "ReceiveDraw error");
                 }
             });
 
             hubConnection.On<CursorPosition>("UpdateCursor", (cursor) =>
             {
+                if (isDisposed) return;
                 try
                 {
-                    var existing = otherCursors.FirstOrDefault(c => c.UserId == cursor.UserId);
+                    var existing = otherCursors.FirstOrDefault(c => c?.UserId == cursor.UserId);
                     if (existing != null)
                     {
                         existing.X = cursor.X;
@@ -132,45 +186,47 @@
                         otherCursors.Add(cursor);
                     }
                     
-                    otherCursors.RemoveAll(c => 
-                        otherCursors.Count(x => x.UserId == c.UserId) > 10);
+                    otherCursors.RemoveAll(c => c == null);
                     
                     InvokeAsync(StateHasChanged);
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"UpdateCursor error: {ex.Message}");
+                    Logger.LogDebug(ex, "UpdateCursor error");
                 }
             });
 
             hubConnection.On<List<DrawingPoint>>("LoadDrawingHistory", async (history) =>
             {
+                if (isDisposed) return;
                 try
                 {
-                    drawingHistory = history;
+                    drawingHistory = history ?? new List<DrawingPoint>();
                     await RedrawCanvas();
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"LoadDrawingHistory error: {ex.Message}");
+                    Logger.LogDebug(ex, "LoadDrawingHistory error");
                 }
             });
 
             hubConnection.On<List<dynamic>>("UpdateUsersList", (users) =>
             {
+                if (isDisposed) return;
                 try
                 {
-                    onlineUsers = users;
+                    onlineUsers = users ?? new List<dynamic>();
                     InvokeAsync(StateHasChanged);
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"UpdateUsersList error: {ex.Message}");
+                    Logger.LogDebug(ex, "UpdateUsersList error");
                 }
             });
 
             hubConnection.On("CanvasCleared", async () =>
             {
+                if (isDisposed) return;
                 try
                 {
                     drawingHistory.Clear();
@@ -178,41 +234,42 @@
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"CanvasCleared error: {ex.Message}");
+                    Logger.LogDebug(ex, "CanvasCleared error");
                 }
             });
 
             hubConnection.On<string>("UserDisconnected", (userId) =>
             {
+                if (isDisposed) return;
                 try
                 {
-                    otherCursors.RemoveAll(c => c.UserId == userId);
+                    otherCursors.RemoveAll(c => c?.UserId == userId);
                     InvokeAsync(StateHasChanged);
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"UserDisconnected error: {ex.Message}");
+                    Logger.LogDebug(ex, "UserDisconnected error");
                 }
             });
 
             hubConnection.Closed += async (error) =>
             {
                 isConnected = false;
-                Console.WriteLine($"Connection closed: {error?.Message}");
+                Logger.LogDebug($"Connection closed: {error?.Message}");
                 await InvokeAsync(StateHasChanged);
             };
 
             hubConnection.Reconnecting += (error) =>
             {
                 isConnected = false;
-                Console.WriteLine($"Reconnecting: {error?.Message}");
+                Logger.LogDebug($"Reconnecting: {error?.Message}");
                 return Task.CompletedTask;
             };
 
             hubConnection.Reconnected += (connectionId) =>
             {
                 isConnected = true;
-                Console.WriteLine($"Reconnected as {connectionId}");
+                Logger.LogDebug($"Reconnected as {connectionId}");
                 return Task.CompletedTask;
             };
 
@@ -220,51 +277,62 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"SignalR initialization error: {ex.Message}");
+            Logger.LogError(ex, "SignalR initialization error");
         }
     }
 
     private async Task ConnectWithRetryAsync(int maxRetries = 5)
     {
-        for (int i = 0; i < maxRetries; i++)
+        for (int i = 0; i < maxRetries && !isDisposed; i++)
         {
             try
             {
                 await hubConnection!.StartAsync();
                 isConnected = true;
-                Console.WriteLine("Connected to SignalR hub");
+                Logger.LogInformation($"Connected to SignalR hub");
                 return;
             }
-            catch (Exception ex)
+            catch (Exception ex) when (!isDisposed)
             {
-                Console.WriteLine($"Connection attempt {i + 1} failed: {ex.Message}");
-                if (i == maxRetries - 1)
-                    throw;
+                Logger.LogDebug($"Connection attempt {i + 1} failed: {ex.Message}");
+                if (i == maxRetries - 1) return;
                 await Task.Delay(TimeSpan.FromSeconds(Math.Pow(2, i)));
+            }
+            catch
+            {
+                // Компонент размонтирован, выходим
+                return;
             }
         }
     }
 
     private async Task DrawOnCanvas(DrawingPoint point)
     {
+        if (isDisposed) return;
         try
         {
             await JS.InvokeVoidAsync("drawPoint", canvas, point);
         }
+        catch (JSException ex)
+        {
+            Logger.LogDebug(ex, "DrawOnCanvas JS error");
+        }
         catch (Exception ex)
         {
-            Console.WriteLine($"DrawOnCanvas error: {ex.Message}");
+            Logger.LogDebug(ex, "DrawOnCanvas error");
         }
     }
 
     private async void StartDrawing(MouseEventArgs e)
     {
+        if (isDisposed) return;
         isDrawing = true;
         await Draw((int)e.ClientX, (int)e.ClientY, true);
     }
 
     private async void StartTouchDrawing(TouchEventArgs e)
     {
+        if (isDisposed) return;
         try
         {
             //e.PreventDefault();
@@ -274,12 +342,13 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"StartTouchDrawing error: {ex.Message}");
+            Logger.LogDebug(ex, "StartTouchDrawing error");
         }
     }
 
     private async void OnMouseMove(MouseEventArgs e)
     {
+        if (isDisposed) return;
         try
         {
             await UpdateCursorPosition((int)e.ClientX, (int)e.ClientY);
@@ -291,12 +360,13 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"OnMouseMove error: {ex.Message}");
+            Logger.LogDebug(ex, "OnMouseMove error");
         }
     }
 
     private async void OnTouchMove(TouchEventArgs e)
     {
+        if (isDisposed) return;
         try
         {
             //e.PreventDefault();
@@ -310,17 +380,19 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"OnTouchMove error: {ex.Message}");
+            Logger.LogDebug(ex, "OnTouchMove error");
         }
     }
 
     private void StopDrawing()
     {
+        if (isDisposed) return;
         isDrawing = false;
     }
 
     private async Task Draw(int clientX, int clientY, bool isStartOfStroke)
     {
+        if (isDisposed) return;
         try
         {
             var canvasRect = await JS.InvokeAsync<CanvasRect>("getCanvasRect", canvas);
@@ -347,7 +419,7 @@
                 
                 await DrawOnCanvas(point);
 
-                if (isConnected && hubConnection?.State == HubConnectionState.Connected)
+                if (isConnected && hubConnection?.State == HubConnectionState.Connected && !isDisposed)
                 {
                     await hubConnection.SendAsync("Draw", point);
                 }
@@ -355,83 +427,97 @@
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Draw error: {ex.Message}");
+            Logger.LogDebug(ex, "Draw error");
         }
     }
 
     private async Task UpdateCursorPosition(int x, int y)
     {
+        if (isDisposed) return;
         try
         {
-            if (isConnected && hubConnection?.State == HubConnectionState.Connected)
+            if (isConnected && hubConnection?.State == HubConnectionState.Connected && !isDisposed)
             {
                 await hubConnection.SendAsync("UpdateCursor", x, y);
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"UpdateCursorPosition error: {ex.Message}");
+            Logger.LogDebug(ex, "UpdateCursorPosition error");
         }
     }
 
     private async Task ClearCanvas()
     {
+        if (isDisposed) return;
         try
         {
-            if (isConnected && hubConnection?.State == HubConnectionState.Connected)
+            if (isConnected && hubConnection?.State == HubConnectionState.Connected && !isDisposed)
             {
                 await hubConnection.SendAsync("ClearCanvas");
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"ClearCanvas error: {ex.Message}");
+            Logger.LogDebug(ex, "ClearCanvas error");
         }
     }
 
     private async Task RedrawCanvas()
     {
+        if (isDisposed) return;
         try
         {
             await ClearLocalCanvas();
             foreach (var point in drawingHistory)
             {
+                if (isDisposed) return;
                 await DrawOnCanvas(point);
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"RedrawCanvas error: {ex.Message}");
+            Logger.LogDebug(ex, "RedrawCanvas error");
         }
     }
 
     private async Task ClearLocalCanvas()
     {
+        if (isDisposed) return;
         try
         {
             await JS.InvokeVoidAsync("clearCanvas", canvas);
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"ClearLocalCanvas error: {ex.Message}");
+            Logger.LogDebug(ex, "ClearLocalCanvas error");
         }
     }
 
     public async ValueTask DisposeAsync()
     {
+        if (isDisposed) return;
+        
+        Logger.LogInformation("Disposing Canvas component");
+        isDisposed = true;
+        isConnected = false;
+        
+        cts?.Cancel();
+        cts?.Dispose();
+        
         try
         {
-            isConnected = false;
             if (hubConnection != null)
             {
                 await hubConnection.DisposeAsync();
             }
-            connectionLock.Dispose();
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"Dispose error: {ex.Message}");
+            Logger.LogDebug(ex, "Dispose error");
         }
+        
+        connectionLock.Dispose();
     }
 
     private class CanvasRect

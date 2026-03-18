@@ -48,7 +48,32 @@
     
     <script src="_framework/blazor.server.js"></script>
     <script src="~/js/canvas.js" asp-append-version="true"></script>
-    
+    <script>
+    // Глобальный обработчик для перехвата ошибок SignalR
+    window.addEventListener('error', function(e) {
+        if (e.message && e.message.includes('Cannot send data if the connection is not in the')) {
+            console.log('Caught SignalR connection error, ignoring...');
+            e.preventDefault();
+            return false;
+        }
+    });
+
+    window.addEventListener('unhandledrejection', function(e) {
+        if (e.reason && e.reason.message && e.reason.message.includes('Cannot send data if the connection is not in the')) {
+            console.log('Caught SignalR connection promise rejection, ignoring...');
+            e.preventDefault();
+            return false;
+        }
+    });
+
+    // Функция для проверки состояния соединения
+    window.checkConnection = function() {
+        return {
+            hasCanvas: document.querySelector('canvas') !== null,
+            blazorStarted: window.Blazor !== undefined
+        };
+    };
+</script>
 
 </body>
 </html>

@@ -12,7 +12,7 @@
             <AuthorizeView>
                 <Authorized>
                     <span>Привет, @context.User.Identity?.Name!</span>
-                    <a href="/logout">Выйти</a>
+                    <a href="/logout" @onclick="Logout">Выйти</a>
                 </Authorized>
                 <NotAuthorized>
                     <a href="/login">Войти</a>
@@ -25,3 +25,15 @@
         </article>
     </main>
 </div>
+
+@code {
+    [Inject] protected NavigationManager Navigation { get; set; } = default!;
+    [Inject] protected IJSRuntime JSRuntime { get; set; } = default!;
+
+    private async Task Logout()
+    {
+        await JSRuntime.InvokeVoidAsync("localStorage.removeItem", "username");
+        await JSRuntime.InvokeVoidAsync("localStorage.removeItem", "color");
+        Navigation.NavigateTo("/login", true);
+    }
+}

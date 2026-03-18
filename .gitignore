@@ -1,0 +1,36 @@
+## .NET Core
+bin/
+obj/
+.vs/
+.vscode/
+*.user
+*.suo
+*.userprefs
+*.swp
+*.pidb
+*.userprefs
+
+## Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+build/
+[Bb]in/
+[Oo]bj/
+
+## Visual Studio
+.vs/
+*.csproj.user
+*.csproj.user
+*.user
+*.userosscache
+*.sln.docstates
+
+## JetBrains Rider
+.idea/
+
+## VS Code
+.vscode/
+
+## Project-specific
+appsettings.Development.json

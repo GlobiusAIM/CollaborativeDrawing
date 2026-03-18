@@ -30,7 +30,6 @@
                 @ontouchcancel="StopDrawing">
         </canvas>
 
-        @* Отображение курсоров других пользователей *@
         @foreach (var cursor in otherCursors)
         {
             <div class="remote-cursor"
@@ -113,7 +112,6 @@
                 otherCursors.Add(cursor);
             }
             
-            // Удаляем неактивные курсоры
             otherCursors.RemoveAll(c => 
                 otherCursors.Count(x => x.UserId == c.UserId) > 10);
             
@@ -199,7 +197,6 @@
         var relativeX = clientX - canvasRect.Left;
         var relativeY = clientY - canvasRect.Top;
 
-        // Проверяем, что координаты в пределах canvas
         if (relativeX >= 0 && relativeX <= canvasRect.Width && 
             relativeY >= 0 && relativeY <= canvasRect.Height)
         {

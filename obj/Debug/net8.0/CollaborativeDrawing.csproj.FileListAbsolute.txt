@@ -12,7 +12,6 @@ E:\rabota\codding\CollaborativeDrawing\bin\Debug\net8.0\Microsoft.AspNetCore.Sig
 E:\rabota\codding\CollaborativeDrawing\bin\Debug\net8.0\Microsoft.AspNetCore.SignalR.Client.Core.dll
 E:\rabota\codding\CollaborativeDrawing\bin\Debug\net8.0\Newtonsoft.Json.dll
 E:\rabota\codding\CollaborativeDrawing\bin\Debug\net8.0\System.Net.WebSockets.WebSocketProtocol.dll
-E:\rabota\codding\CollaborativeDrawing\bin\Debug\net8.0\System.Security.Permissions.dll
 E:\rabota\codding\CollaborativeDrawing\obj\Debug\net8.0\CollaborativeDrawing.csproj.AssemblyReference.cache
 E:\rabota\codding\CollaborativeDrawing\obj\Debug\net8.0\rpswa.dswa.cache.json
 E:\rabota\codding\CollaborativeDrawing\obj\Debug\net8.0\CollaborativeDrawing.GeneratedMSBuildEditorConfig.editorconfig
@@ -37,3 +36,4 @@ E:\rabota\codding\CollaborativeDrawing\obj\Debug\net8.0\refint\CollaborativeDraw
 E:\rabota\codding\CollaborativeDrawing\obj\Debug\net8.0\CollaborativeDrawing.pdb
 E:\rabota\codding\CollaborativeDrawing\obj\Debug\net8.0\CollaborativeDrawing.genruntimeconfig.cache
 E:\rabota\codding\CollaborativeDrawing\obj\Debug\net8.0\ref\CollaborativeDrawing.dll
+E:\rabota\codding\CollaborativeDrawing\obj\Debug\net8.0\CollaborativeDrawing.sourcelink.json

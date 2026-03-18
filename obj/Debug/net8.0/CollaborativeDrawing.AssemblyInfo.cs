@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("CollaborativeDrawing")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+acd8b52f2a6338de320e687d645b5ad87cd5b1bf")]
 [assembly: System.Reflection.AssemblyProductAttribute("CollaborativeDrawing")]
 [assembly: System.Reflection.AssemblyTitleAttribute("CollaborativeDrawing")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

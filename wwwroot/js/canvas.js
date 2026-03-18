@@ -1,4 +1,3 @@
-// Функция для получения координат canvas
 window.getCanvasRect = (canvas) => {
     if (!canvas) return { left: 0, top: 0, width: 0, height: 0 };
     
@@ -11,7 +10,6 @@ window.getCanvasRect = (canvas) => {
     };
 };
 
-// Функция для рисования точки
 window.drawPoint = (canvas, point) => {
     if (!canvas || !point) return;
     
@@ -32,7 +30,6 @@ window.drawPoint = (canvas, point) => {
     }
 };
 
-// Функция для очистки canvas
 window.clearCanvas = (canvas) => {
     if (!canvas) return;
     
@@ -40,12 +37,10 @@ window.clearCanvas = (canvas) => {
     if (!ctx) return;
     
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    // Заполняем белым фоном
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 };
 
-// Инициализация canvas с правильными размерами
 window.initializeCanvas = (canvas) => {
     if (!canvas) return;
     
@@ -53,15 +48,12 @@ window.initializeCanvas = (canvas) => {
         const container = canvas.parentElement;
         if (!container) return;
         
-        // Сохраняем текущее содержимое
         const ctx = canvas.getContext('2d');
         const imageData = ctx ? ctx.getImageData(0, 0, canvas.width, canvas.height) : null;
         
-        // Устанавливаем новые размеры
         canvas.width = container.clientWidth;
         canvas.height = container.clientHeight;
         
-        // Восстанавливаем содержимое или создаем белый фон
         if (ctx) {
             if (imageData && imageData.data.some(value => value !== 0)) {
                 ctx.putImageData(imageData, 0, 0);
@@ -72,7 +64,6 @@ window.initializeCanvas = (canvas) => {
         }
     };
 
-    // Вызываем сразу и при изменении размера окна
     resizeCanvas();
     window.addEventListener('resize', resizeCanvas);
     

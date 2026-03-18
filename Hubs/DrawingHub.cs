@@ -29,13 +29,8 @@ namespace CollaborativeDrawing.Hubs
             };
 
             _connectedUsers.TryAdd(Context.ConnectionId, userInfo);
-
-            // Отправляем историю рисования новому пользователю
             await Clients.Caller.SendAsync("LoadDrawingHistory", _drawingHistory);
-
-            // Уведомляем всех о новом пользователе
             await UpdateUsersList();
-
             await base.OnConnectedAsync();
         }
 
@@ -56,7 +51,6 @@ namespace CollaborativeDrawing.Hubs
                 if (!point.IsStartOfStroke)
                 {
                     _drawingHistory.Add(point);
-                    // Ограничиваем историю последними 1000 точками для производительности
                     if (_drawingHistory.Count > 1000)
                     {
                         _drawingHistory.RemoveRange(0, 100);

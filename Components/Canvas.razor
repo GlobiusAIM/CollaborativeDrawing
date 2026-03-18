@@ -147,7 +147,14 @@
 
     private async Task DrawOnCanvas(DrawingPoint point)
     {
-        await JS.InvokeVoidAsync("drawPoint", canvas, point);
+        try
+        {
+            await JS.InvokeVoidAsync("drawPoint", canvas, point);
+        }
+        catch (JSException ex)
+        {
+            Console.WriteLine($"Canvas error: {ex.Message}");
+        }
     }
 
     private async void StartDrawing(MouseEventArgs e)

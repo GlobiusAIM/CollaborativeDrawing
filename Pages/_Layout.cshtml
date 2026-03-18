@@ -18,7 +18,7 @@
           crossorigin="anonymous" referrerpolicy="no-referrer" />
     
     <link rel="stylesheet" href="~/css/site.css" asp-append-version="true" />
-    <link href="CollaborativeDrawing.styles.css" rel="stylesheet" />
+    @* <link href="CollaborativeDrawing.styles.css" rel="stylesheet" /> *@
     
     <link rel="icon" type="image/png" href="~/favicon.png"/>
     <title>Совместное рисование - Collaborative Drawing</title>
@@ -49,23 +49,6 @@
     <script src="_framework/blazor.server.js"></script>
     <script src="~/js/canvas.js" asp-append-version="true"></script>
     
-    <script>
-        window.addEventListener('error', function (e) {
-            console.error('Global error:', e.error);
-        });
 
-        Blazor.start({
-            reconnectionHandler: {
-                onConnectionDown: function (options) {
-                    console.log('Connection lost, attempting to reconnect...');
-                    document.getElementById('blazor-error-ui').style.display = 'block';
-                },
-                onConnectionUp: function () {
-                    console.log('Connection restored');
-                    document.getElementById('blazor-error-ui').style.display = 'none';
-                }
-            }
-        });
-    </script>
 </body>
 </html>

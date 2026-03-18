@@ -1,0 +1,37 @@
+@page "/draw"
+@using Microsoft.AspNetCore.Authorization
+@using CollaborativeDrawing.Components
+@attribute [Authorize]
+
+<div class="draw-page">
+    <div class="header">
+        <h1>Совместное рисование</h1>
+        <div class="user-info">
+            <span>Вы вошли как: @UserName</span>
+            <button class="btn btn-outline-secondary" @onclick="Logout">Выйти</button>
+        </div>
+    </div>
+
+    <Canvas UserName="@UserName" />
+</div>
+
+@code {
+    [Inject] protected AuthenticationStateProvider AuthStateProvider { get; set; } = default!;
+    [Inject] protected NavigationManager Navigation { get; set; } = default!;
+    [Inject] protected IJSRuntime JSRuntime { get; set; } = default!;
+
+    private string UserName { get; set; } = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        UserName = authState.User.Identity?.Name ?? "Аноним";
+    }
+
+    private async Task Logout()
+    {
+        await JSRuntime.InvokeVoidAsync("localStorage.removeItem", "username");
+        await JSRuntime.InvokeVoidAsync("localStorage.removeItem", "color");
+        Navigation.NavigateTo("/login", true);
+    }
+}

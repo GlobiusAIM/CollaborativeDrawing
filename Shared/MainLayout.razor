@@ -1,0 +1,27 @@
+﻿@namespace CollaborativeDrawing.Shared
+@inherits LayoutComponentBase
+@using Microsoft.AspNetCore.Components.Authorization
+
+<div class="page">
+    <div class="sidebar">
+        <NavMenu />
+    </div>
+
+    <main>
+        <div class="top-row px-4">
+            <AuthorizeView>
+                <Authorized>
+                    <span>Привет, @context.User.Identity?.Name!</span>
+                    <a href="/logout">Выйти</a>
+                </Authorized>
+                <NotAuthorized>
+                    <a href="/login">Войти</a>
+                </NotAuthorized>
+            </AuthorizeView>
+        </div>
+
+        <article class="content px-4">
+            @Body
+        </article>
+    </main>
+</div>

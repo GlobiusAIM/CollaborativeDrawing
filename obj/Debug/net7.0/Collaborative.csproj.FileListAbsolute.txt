@@ -1,0 +1,9 @@
+E:\rabota\codding\collaborative\obj\Debug\net7.0\Collaborative.csproj.AssemblyReference.cache
+E:\rabota\codding\collaborative\obj\Debug\net7.0\rpswa.dswa.cache.json
+E:\rabota\codding\collaborative\obj\Debug\net7.0\Collaborative.GeneratedMSBuildEditorConfig.editorconfig
+E:\rabota\codding\collaborative\obj\Debug\net7.0\Collaborative.AssemblyInfoInputs.cache
+E:\rabota\codding\collaborative\obj\Debug\net7.0\Collaborative.AssemblyInfo.cs
+E:\rabota\codding\collaborative\obj\Debug\net7.0\Collaborative.csproj.CoreCompileInputs.cache
+E:\rabota\codding\collaborative\obj\Debug\net7.0\Collaborative.MvcApplicationPartsAssemblyInfo.cache
+E:\rabota\codding\collaborative\obj\Debug\net7.0\Collaborative.RazorAssemblyInfo.cache
+E:\rabota\codding\collaborative\obj\Debug\net7.0\Collaborative.RazorAssemblyInfo.cs

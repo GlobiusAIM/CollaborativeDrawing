@@ -1,0 +1,275 @@
+@namespace CollaborativeDrawing.Components
+@using CollaborativeDrawing.Models
+@using Microsoft.AspNetCore.SignalR.Client
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+
+<div class="drawing-container">
+    <div class="toolbar">
+        <div class="tool-group">
+            <label>Цвет:</label>
+            <input type="color" @bind="currentColor" @bind:event="oninput" />
+        </div>
+        <div class="tool-group">
+            <label>Толщина:</label>
+            <input type="range" min="1" max="20" @bind="lineWidth" />
+            <span>@lineWidth</span>
+        </div>
+        <button class="btn btn-danger" @onclick="ClearCanvas">Очистить</button>
+    </div>
+
+    <div class="canvas-wrapper" @ref="canvasWrapper" @onmousemove="OnMouseMove" @onmouseleave="StopDrawing">
+        <canvas @ref="canvas"
+                @onmousedown="StartDrawing"
+                @onmouseup="StopDrawing"
+                @onmouseleave="StopDrawing"
+                @ontouchstart="StartTouchDrawing"
+                @ontouchmove="OnTouchMove"
+                @ontouchend="StopDrawing"
+                @ontouchcancel="StopDrawing">
+        </canvas>
+
+        @* Отображение курсоров других пользователей *@
+        @foreach (var cursor in otherCursors)
+        {
+            <div class="remote-cursor"
+                 style="left: @(cursor.X)px; top: @(cursor.Y)px; background-color: @cursor.Color;">
+                <span class="cursor-label" style="background-color: @cursor.Color;">
+                    @cursor.UserName
+                </span>
+            </div>
+        }
+    </div>
+
+    <div class="users-list">
+        <h4>Участники (@onlineUsers.Count)</h4>
+        <ul>
+            @foreach (var user in onlineUsers)
+            {
+                <li>
+                    <span class="user-indicator" style="background-color: @user.Color"></span>
+                    @user.UserName
+                </li>
+            }
+        </ul>
+    </div>
+</div>
+
+@code {
+    private ElementReference canvas;
+    private ElementReference canvasWrapper;
+    private HubConnection? hubConnection;
+    private bool isDrawing = false;
+    private string currentColor = "#000000";
+    private int lineWidth = 3;
+    private List<DrawingPoint> drawingHistory = new();
+    private List<CursorPosition> otherCursors = new();
+    private List<dynamic> onlineUsers = new();
+
+    [Parameter] public string UserName { get; set; } = "Аноним";
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await InitializeCanvas();
+            await InitializeSignalR();
+        }
+    }
+
+    private async Task InitializeCanvas()
+    {
+        await JS.InvokeVoidAsync("initializeCanvas", canvas);
+    }
+
+    private async Task InitializeSignalR()
+    {
+        hubConnection = new HubConnectionBuilder()
+            .WithUrl(Navigation.ToAbsoluteUri("/drawinghub"))
+            .WithAutomaticReconnect()
+            .Build();
+
+        hubConnection.On<DrawingPoint>("ReceiveDraw", async (point) =>
+        {
+            if (!point.UserId.Equals(UserName, StringComparison.OrdinalIgnoreCase))
+            {
+                drawingHistory.Add(point);
+                await DrawOnCanvas(point);
+                await InvokeAsync(StateHasChanged);
+            }
+        });
+
+        hubConnection.On<CursorPosition>("UpdateCursor", (cursor) =>
+        {
+            var existing = otherCursors.FirstOrDefault(c => c.UserId == cursor.UserId);
+            if (existing != null)
+            {
+                existing.X = cursor.X;
+                existing.Y = cursor.Y;
+            }
+            else
+            {
+                otherCursors.Add(cursor);
+            }
+            
+            // Удаляем неактивные курсоры
+            otherCursors.RemoveAll(c => 
+                otherCursors.Count(x => x.UserId == c.UserId) > 10);
+            
+            InvokeAsync(StateHasChanged);
+        });
+
+        hubConnection.On<List<DrawingPoint>>("LoadDrawingHistory", async (history) =>
+        {
+            drawingHistory = history;
+            await RedrawCanvas();
+        });
+
+        hubConnection.On<List<dynamic>>("UpdateUsersList", (users) =>
+        {
+            onlineUsers = users;
+            InvokeAsync(StateHasChanged);
+        });
+
+        hubConnection.On("CanvasCleared", async () =>
+        {
+            drawingHistory.Clear();
+            await ClearLocalCanvas();
+        });
+
+        hubConnection.On<string>("UserDisconnected", (userId) =>
+        {
+            otherCursors.RemoveAll(c => c.UserId == userId);
+            InvokeAsync(StateHasChanged);
+        });
+
+        await hubConnection.StartAsync();
+    }
+
+    private async Task DrawOnCanvas(DrawingPoint point)
+    {
+        await JS.InvokeVoidAsync("drawPoint", canvas, point);
+    }
+
+    private async void StartDrawing(MouseEventArgs e)
+    {
+        isDrawing = true;
+        await Draw((int)e.ClientX, (int)e.ClientY, true);
+    }
+
+    private async void StartTouchDrawing(TouchEventArgs e)
+    {
+        //e.PreventDefault();
+        isDrawing = true;
+        var touch = e.Touches[0];
+        await Draw((int)touch.ClientX, (int)touch.ClientY, true);
+    }
+
+    private async void OnMouseMove(MouseEventArgs e)
+    {
+        await UpdateCursorPosition((int)e.ClientX, (int)e.ClientY);
+        
+        if (isDrawing)
+        {
+            await Draw((int)e.ClientX, (int)e.ClientY, false);
+        }
+    }
+
+    private async void OnTouchMove(TouchEventArgs e)
+    {
+        //e.PreventDefault();
+        var touch = e.Touches[0];
+        await UpdateCursorPosition((int)touch.ClientX, (int)touch.ClientY);
+        
+        if (isDrawing)
+        {
+            await Draw((int)touch.ClientX, (int)touch.ClientY, false);
+        }
+    }
+
+    private void StopDrawing()
+    {
+        isDrawing = false;
+    }
+
+    private async Task Draw(int clientX, int clientY, bool isStartOfStroke)
+    {
+        var canvasRect = await JS.InvokeAsync<CanvasRect>("getCanvasRect", canvas);
+        var relativeX = clientX - canvasRect.Left;
+        var relativeY = clientY - canvasRect.Top;
+
+        // Проверяем, что координаты в пределах canvas
+        if (relativeX >= 0 && relativeX <= canvasRect.Width && 
+            relativeY >= 0 && relativeY <= canvasRect.Height)
+        {
+            var point = new DrawingPoint
+            {
+                X = (int)relativeX,
+                Y = (int)relativeY,
+                Color = currentColor,
+                LineWidth = lineWidth,
+                IsStartOfStroke = isStartOfStroke,
+                UserId = UserName
+            };
+
+            if (!isStartOfStroke)
+            {
+                drawingHistory.Add(point);
+            }
+            
+            await DrawOnCanvas(point);
+
+            if (hubConnection?.State == HubConnectionState.Connected)
+            {
+                await hubConnection.SendAsync("Draw", point);
+            }
+        }
+    }
+
+    private async Task UpdateCursorPosition(int x, int y)
+    {
+        if (hubConnection?.State == HubConnectionState.Connected)
+        {
+            await hubConnection.SendAsync("UpdateCursor", x, y);
+        }
+    }
+
+    private async Task ClearCanvas()
+    {
+        if (hubConnection?.State == HubConnectionState.Connected)
+        {
+            await hubConnection.SendAsync("ClearCanvas");
+        }
+    }
+
+    private async Task RedrawCanvas()
+    {
+        await ClearLocalCanvas();
+        foreach (var point in drawingHistory)
+        {
+            await DrawOnCanvas(point);
+        }
+    }
+
+    private async Task ClearLocalCanvas()
+    {
+        await JS.InvokeVoidAsync("clearCanvas", canvas);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (hubConnection != null)
+        {
+            await hubConnection.DisposeAsync();
+        }
+    }
+
+    private class CanvasRect
+    {
+        public double Left { get; set; }
+        public double Top { get; set; }
+        public double Width { get; set; }
+        public double Height { get; set; }
+    }
+}

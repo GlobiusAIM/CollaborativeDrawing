@@ -1,3 +1,4 @@
+// Глобальные функции для работы с canvas
 window.getCanvasRect = (canvas) => {
     if (!canvas) return { left: 0, top: 0, width: 0, height: 0 };
     
